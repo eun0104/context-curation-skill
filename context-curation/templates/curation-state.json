@@ -1,0 +1,10 @@
+{
+  "last_tuned": "YYYY-MM-DD",
+  "last_tuned_session": 0,
+  "harvested_through_session": 0,
+  "summary": "one line describing what the last tuning run changed",
+  "l0_tokens_after": 0,
+  "rejected_candidates": [
+    "short label of a candidate already considered and rejected"
+  ]
+}

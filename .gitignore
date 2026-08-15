@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
+
+# opencode working state — never commit agent scratch
+.opencode/
+.omo/
+
+# Curation artefacts belong to a project, not to this skill repo
+docs/_tuning-proposal.md
