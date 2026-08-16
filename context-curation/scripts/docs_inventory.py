@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import re
@@ -58,13 +59,14 @@ SESSION_GLOBS = [
 SESSION_MARKER_RE = re.compile(
     r"^#{1,4}\s*(?:session|세션)\s*[-#:]?\s*(\d+)", re.IGNORECASE | re.MULTILINE)
 
-L1_DOCS = {"plan.md", "handoff.md", "README.md", "readme.md", "PLAN.md"}
+L1_PATHS = {"plan.md", "docs/handoff.md"}
+REQUIRED_L1_PATHS = ("plan.md", "docs/handoff.md")
 
 STATE_FILE = "docs/.curation-state.json"
 
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 BACKTICK_PATH_RE = re.compile(r"`([^`\s]+\.md)`")
-BARE_PATH_RE = re.compile(r"(?<![\w`(/])((?:docs|\.omo)/[\w./-]+\.md)")
+VERIFIED_RE = re.compile(r"<!--\s*verified:\s*(\d{4}-\d{2}-\d{2})\s*-->", re.IGNORECASE)
 
 
 # --------------------------------------------------------------------------
@@ -101,11 +103,13 @@ def session_stats(paths):
             continue
         tokens += estimate_tokens(text)
         numbers += [int(n) for n in SESSION_MARKER_RE.findall(text)]
+    unique_numbers = sorted(set(numbers))
     return {
         "files": len(paths),
         "tokens": tokens,
         "entries": len(numbers),
-        "latest": max(numbers) if numbers else None,
+        "latest": unique_numbers[-1] if unique_numbers else None,
+        "session_numbers": unique_numbers,
     }
 
 
@@ -123,8 +127,9 @@ def collect(root: Path, globs, apply_exclusions: bool = True):
 
 def git_last_commit(root: Path, path: Path):
     try:
+        pathspec = str(path.relative_to(root)).replace(os.sep, "/")
         out = subprocess.run(
-            ["git", "log", "-1", "--format=%ad|%h", "--date=short", "--", str(path)],
+            ["git", "log", "-1", "--format=%ad|%h", "--date=short", "--", pathspec],
             cwd=str(root), capture_output=True, text=True, timeout=10,
         )
         if out.returncode == 0 and out.stdout.strip():
@@ -135,20 +140,79 @@ def git_last_commit(root: Path, path: Path):
     return None, None
 
 
+def git_worktree_changed(root: Path, path: Path) -> bool:
+    try:
+        pathspec = str(path.relative_to(root)).replace(os.sep, "/")
+        out = subprocess.run(
+            ["git", "status", "--porcelain", "--", pathspec], cwd=str(root),
+            capture_output=True, text=True, timeout=10,
+        )
+        return out.returncode == 0 and bool(out.stdout.strip())
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+
+
 def days_since(mtime: float) -> int:
     return int((time.time() - mtime) / 86400)
 
 
+def freshness(text: str, mtime: float, commit_date=None):
+    """Return age since the latest committed state or valid verification marker."""
+    latest = dt.date.fromtimestamp(mtime)
+    if commit_date:
+        try:
+            latest = dt.date.fromisoformat(commit_date)
+        except ValueError:
+            pass
+    verified = []
+    for raw in VERIFIED_RE.findall(text):
+        try:
+            verified.append(dt.date.fromisoformat(raw))
+        except ValueError:
+            continue
+    if verified:
+        latest = max(latest, max(verified))
+    return max(0, (dt.date.today() - latest).days), (max(verified).isoformat()
+                                                     if verified else None)
+
+
+def classify_layer(rel: str) -> str:
+    normalized = rel.replace("\\", "/")
+    if normalized == ENTRY_DOC:
+        return "L0"
+    if normalized.lower() in L1_PATHS:
+        return "L1"
+    return "L2"
+
+
+def strip_fenced_code(text: str) -> str:
+    """Remove fenced examples so sample and placeholder paths are not pointers."""
+    lines, in_code = [], False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_code = not in_code
+            continue
+        if not in_code:
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def is_concrete_doc_path(link: str) -> bool:
+    """Reject globs and placeholders; reachability requires a concrete document."""
+    return not any(ch in link for ch in "*?[]<>{}")
+
+
 def extract_links(text: str):
-    """All .md paths referenced from a document, however they are written."""
+    """Concrete Markdown links and backticked .md paths outside fenced examples."""
+    text = strip_fenced_code(text)
     links = set()
     for match in LINK_RE.findall(text):
         target = match.split("#")[0].strip()
         if target and not target.startswith(("http://", "https://", "mailto:")):
             links.add(target)
     links.update(BACKTICK_PATH_RE.findall(text))
-    links.update(BARE_PATH_RE.findall(text))
-    return {link for link in links if link.endswith(".md")}
+    return {link for link in links
+            if link.endswith(".md") and is_concrete_doc_path(link)}
 
 
 def resolve_link(link: str, source: Path, root: Path):
@@ -245,16 +309,21 @@ def audit(root: Path, args) -> dict:
         rel = str(path.relative_to(root)).replace(os.sep, "/")
         texts[rel] = text
         commit_date, sha = git_last_commit(root, path)
+        worktree_changed = bool(commit_date and git_worktree_changed(root, path))
+        freshness_commit = None if worktree_changed else commit_date
+        fresh_age, verified_date = freshness(text, path.stat().st_mtime, freshness_commit)
         records.append({
             "path": rel,
             "lines": text.count("\n") + 1,
             "tokens": estimate_tokens(text),
-            "age_days": days_since(path.stat().st_mtime),
+            "age_days": fresh_age,
+            "mtime_age_days": days_since(path.stat().st_mtime),
+            "freshness_age_days": fresh_age,
+            "last_verified": verified_date,
             "git_date": commit_date,
             "git_sha": sha,
-            "layer": ("L0" if rel == ENTRY_DOC
-                      else "L1" if path.name in L1_DOCS
-                      else "L2"),
+            "worktree_changed": worktree_changed,
+            "layer": classify_layer(rel),
         })
 
     by_path = {r["path"]: r for r in records}
@@ -270,22 +339,26 @@ def audit(root: Path, args) -> dict:
     else:
         budget_findings.append({"path": ENTRY_DOC, "tokens": None,
                                 "budget": args.l0_budget, "missing": True})
-    for rel, rec in by_path.items():
-        if rec["layer"] == "L1" and rec["tokens"] > args.l1_budget:
+    for rel in REQUIRED_L1_PATHS:
+        rec = by_path.get(rel)
+        if rec is None:
+            budget_findings.append({"path": rel, "tokens": None,
+                                    "budget": args.l1_budget, "missing": True})
+        else:
             budget_findings.append({
                 "path": rel, "tokens": rec["tokens"], "budget": args.l1_budget,
-                "over": rec["tokens"] - args.l1_budget,
+                "over": max(0, rec["tokens"] - args.l1_budget),
             })
 
     # -- reachability ----------------------------------------------------
-    broken, edges = [], {}
+    broken_candidates, edges = [], {}
     for rel, text in texts.items():
         source = root / rel
         targets = set()
         for link in extract_links(text):
             resolved = resolve_link(link, source, root)
             if resolved is None:
-                broken.append({"from": rel, "link": link})
+                broken_candidates.append({"from": rel, "link": link})
             else:
                 try:
                     targets.add(str(resolved.relative_to(root)).replace(os.sep, "/"))
@@ -301,17 +374,16 @@ def audit(root: Path, args) -> dict:
         reached.add(node)
         queue.extend(edges.get(node, ()))
 
-    orphans = [rel for rel in texts
-               if rel not in reached
-               and rel != ENTRY_DOC
-               and rel.rsplit("/", 1)[-1] not in L1_DOCS]
+    broken = [item for item in broken_candidates if item["from"] in reached]
+    orphans = [rel for rel in texts if rel not in reached and rel != ENTRY_DOC]
 
     # -- staleness -------------------------------------------------------
     stale = [
-        {"path": r["path"], "age_days": r["age_days"]}
+        {"path": r["path"], "age_days": r["age_days"],
+         "freshness_age_days": r["freshness_age_days"],
+         "last_verified": r["last_verified"]}
         for r in records
-        if r["age_days"] > args.stale_days
-        and "<!-- verified:" not in texts.get(r["path"], "")
+        if r["freshness_age_days"] > args.stale_days
     ]
 
     duplicates = find_duplicates(texts, args.dup_threshold)
@@ -348,11 +420,13 @@ def audit(root: Path, args) -> dict:
 def report(result: dict, args) -> str:
     out = ["# Documentation Inventory", ""]
     state = result["curation_state"]
-    if state and "last_tuned" in state:
+    if state and state.get("last_tuned"):
         out.append(f"Last tuned: **{state['last_tuned']}** "
                    f"(session {state.get('last_tuned_session', '?')})")
+    elif state and state.get("error"):
+        out.append(f"Curation state: **{state['error']}**")
     else:
-        out.append("Last tuned: **never** - no `docs/.curation-state.json` found.")
+        out.append("Last tuned: **never** - no usable tuning checkpoint found.")
     out.append("")
 
     out += ["## 1. Inventory", "",
@@ -360,6 +434,8 @@ def report(result: dict, args) -> str:
             "|---|---|---:|---:|---:|---|"]
     for r in sorted(result["docs"], key=lambda x: (x["layer"], x["path"])):
         commit = f"{r['git_date']} {r['git_sha']}" if r["git_date"] else "-"
+        if r["worktree_changed"]:
+            commit += " (working tree changed)"
         out.append(f"| `{r['path']}` | {r['layer']} | {r['lines']} | "
                    f"{r['tokens']} | {r['age_days']} | {commit} |")
     total = sum(r["tokens"] for r in result["docs"]
@@ -367,18 +443,19 @@ def report(result: dict, args) -> str:
     out += ["", f"**Always-read cost (L0+L1): ~{total} tokens per session.**", ""]
 
     out += ["## 2. Budget", ""]
-    problems = False
+    over_budget = False
     for b in result["budget"]:
         if b.get("missing"):
-            out.append(f"- `{b['path']}` **NOT FOUND** - no entry point for the doc layer.")
-            problems = True
+            detail = ("no entry point for the doc layer"
+                      if b["path"] == ENTRY_DOC else "required session-start document missing")
+            out.append(f"- `{b['path']}` **NOT FOUND** - {detail}.")
         elif b.get("over", 0) > 0:
             out.append(f"- `{b['path']}`: {b['tokens']} tokens "
                        f"(budget {b['budget']}) - **OVER by {b['over']}**")
-            problems = True
+            over_budget = True
         else:
             out.append(f"- `{b['path']}`: {b['tokens']} / {b['budget']} tokens - ok")
-    if problems:
+    if over_budget:
         out.append("")
         out.append("See `references/audit-checks.md` section 1 for the demotion order.")
     out.append("")
@@ -402,11 +479,13 @@ def report(result: dict, args) -> str:
     out += ["## 4. Staleness", ""]
     if result["stale"]:
         for s in result["stale"]:
-            out.append(f"- `{s['path']}` - {s['age_days']} days "
-                       f"(threshold {args.stale_days})")
+            basis = (f", last verified {s['last_verified']}"
+                     if s["last_verified"] else "")
+            out.append(f"- `{s['path']}` - freshness age {s['freshness_age_days']} days"
+                       f"{basis} (threshold {args.stale_days})")
         out.append("")
-        out.append("Verify against the code, then add `<!-- verified: YYYY-MM-DD -->` "
-                   "to suppress future flags.")
+        out.append("Verify against the code, then add or replace "
+                   "`<!-- verified: YYYY-MM-DD -->` to reset the staleness clock.")
     else:
         out.append("Nothing stale.")
     out.append("")
@@ -443,15 +522,22 @@ def report(result: dict, args) -> str:
                        "splitting the run into Pass A and Pass B.")
         harvested = (state or {}).get("harvested_through_session")
         if harvested is not None and s["latest"] is not None:
-            gap = s["latest"] - harvested
-            if gap > 0:
+            pending = [n for n in s["session_numbers"] if n > harvested]
+            if pending:
                 out.append("")
                 out.append(f"State says harvested through session {harvested} -> "
-                           f"**{gap} session(s) pending harvest.** "
-                           f"Read only sessions {harvested + 1}-{s['latest']}.")
+                           f"**{len(pending)} session(s) pending harvest.** "
+                           f"Read session entries {', '.join(map(str, pending))}.")
             else:
                 out.append("")
                 out.append("Harvest is up to date.")
+        elif s["latest"] is not None:
+            recent = s["session_numbers"][-max(1, args.bootstrap_sessions):]
+            out.append("")
+            out.append("No usable harvest checkpoint -> bootstrap from the latest "
+                       f"{len(recent)} session entries "
+                       f"({', '.join(map(str, recent))}) after "
+                       "the full-log tag extraction.")
     out.append("")
     return "\n".join(out)
 
@@ -471,6 +557,8 @@ def main() -> int:
                         help="paragraph similarity to flag, 0-1 (default: 0.45)")
     parser.add_argument("--context-window", type=int, default=200000,
                         help="session context window, for harvest sizing (default: 200000)")
+    parser.add_argument("--bootstrap-sessions", type=int, default=5,
+                        help="recent sessions to read when no harvest state exists (default: 5)")
     args = parser.parse_args()
 
     root = Path(args.root).resolve()

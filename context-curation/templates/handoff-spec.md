@@ -64,7 +64,8 @@ Tags are what make the next harvest a `grep` rather than a full re-read of the l
 ## Curation check
 
 At the end of handoff, read `docs/.curation-state.json` and suggest running `context-curation`
-if any hold: 5+ sessions since `last_tuned` · AGENTS.md over budget · a milestone closed ·
-3+ tags accumulated · new subsystem · the user re-explained something the agent should have known.
+if any hold: the state is absent or unreadable after several sessions · 5+ sessions since
+`last_tuned` · AGENTS.md over budget · a milestone closed · 3+ tags accumulated · new subsystem ·
+the user re-explained something the agent should have known.
 
 Suggest, do not run.

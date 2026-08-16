@@ -4,6 +4,16 @@ How to read `docs_inventory.py` output and what to do about each finding.
 Findings are listed in the order they should be fixed — earlier ones change the shape of
 later ones.
 
+## Contents
+
+1. L0 over budget
+2. Unreachable documents
+3. Broken pointers
+4. Duplicated passages
+5. Stale documents
+6. Session log volume
+7. Handoff bloat
+
 ## 1. L0 over budget
 
 **Report:** `AGENTS.md: 3,180 tokens (budget 2,000) — OVER by 1,180`
@@ -27,12 +37,18 @@ startup sequence. Those are why AGENTS.md exists.
 If it still doesn't fit, the pointer table itself is too long — group related docs under a
 single index doc and point at the index.
 
+The audit treats only root `plan.md` and `docs/handoff.md` as L1. A README is conditional
+documentation unless AGENTS.md explicitly makes it part of the session-start sequence.
+
 ## 2. Unreachable documents
 
 **Report:** `docs/domain/sb-growth.md — ORPHAN (no inbound pointer)`
 
 Reachability is computed by following markdown links and backticked paths from AGENTS.md.
 An orphan is never read, so it silently rots while looking maintained.
+
+L1 documents are not exempt: if `plan.md` or `docs/handoff.md` is unreachable from AGENTS.md,
+the session-start contract is broken and the audit must report it.
 
 Three possible resolutions:
 
@@ -68,16 +84,18 @@ if the underlying fact changed.
 
 ## 5. Stale documents
 
-**Report:** `docs/architecture.md — last modified 118 days ago (threshold 90)`
+**Report:** `docs/architecture.md — freshness age 118 days (threshold 90)`
 
-Staleness is a suspicion, not a verdict — it is derived from modification time, which says
-nothing about accuracy. A frozen spec should be old.
+Staleness is a suspicion, not a verdict — it is derived from the last commit date (or filesystem
+mtime outside Git) and the latest verification marker, none of which proves accuracy. A frozen
+spec may legitimately be old.
 
 Check against the code or data it describes; read the actual implementation rather than asking
 the user whether it is still true. Verification is the cheap half of this and guessing is the
-expensive half. If it still holds, add
-`<!-- verified: YYYY-MM-DD -->` so the next audit doesn't re-flag it. If it drifted, the fix
-is a rewrite plus, usually, an ADR explaining what changed.
+expensive half. If it still holds, add or replace `<!-- verified: YYYY-MM-DD -->`. The marker
+resets the staleness clock; it does not suppress checks forever. If the verification date itself
+ages past the threshold, the audit flags the document again. If the doc drifted, the fix is a
+rewrite plus, usually, an ADR explaining what changed.
 
 Stale invariants deserve extra care: a rule everyone quietly stopped following is worse than
 no rule, because it teaches the agent that rules are advisory.

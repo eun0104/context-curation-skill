@@ -12,10 +12,10 @@ Once a fact passes the promotion test, it needs exactly one home.
 | Odd behaviour of an external system | `docs/domain/gotchas.md` | L2 | Conditional pointer |
 | Domain knowledge the agent lacks (physics, process, notation) | `docs/domain/<topic>.md` | L2 | Conditional pointer |
 | Settled parameters, paths, magic numbers | `docs/reference/<topic>.md` | L2 | Conditional pointer |
-| How to run something | `README.md` | L1 | Conditional pointer |
+| How to run something | `README.md` | L2 | Conditional pointer |
 | Milestones and completion status | `plan.md` | L1 | Always-read pointer |
 | Current position, blockers, next action | `handoff.md` | L1 | Always-read pointer |
-| Raw session narrative | `docs/sessions/NNN-*.md` | L3 | None — grep only |
+| Raw session narrative | `docs/session-log.md` or `docs/sessions/NNN-*.md` | L3 | None — grep only |
 
 Invariants are the only category that gets content copied into AGENTS.md, because a rule
 the agent never reads is a rule that doesn't exist. Keep those lines to one sentence each,

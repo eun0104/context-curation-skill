@@ -53,11 +53,11 @@ so it is never read. An unreachable doc is worse than no doc — it creates fals
 
 ## Non-negotiables
 
-1. **Never delete a document.** Move to `docs/archive/YYYY-MM-DD-<name>.md` with a note on what superseded it. Deletions destroy the trail the user relies on to reconstruct why something was decided.
+1. **Never delete a persistent document.** Move it to `docs/archive/YYYY-MM-DD-<name>.md` with a note on what superseded it. The temporary `docs/_tuning-proposal.md` is the sole exception: remove it after approved changes are fully applied.
 2. **One fact, one home.** State a fact in exactly one place; point at it everywhere else. Copying content into AGENTS.md is the most common cause of drift, because the copy never gets updated.
 3. **Propose, then stop.** See Step 5. Doc restructuring is hard to review after the fact.
 4. **Cite the source of every promoted fact** — session number, file path, or commit. Never promote something inferred rather than observed. A wrong fact in the persistent layer poisons every future session.
-5. **Max 2 new files per run.** If more seems needed, the material belongs inside an existing doc.
+5. **Max 2 new durable L2 knowledge files per run.** The proposal, curation state, and handoff control spec do not count. If bootstrap needs more than two L2 files, split it across runs or request explicit approval for the larger document set.
 6. **Follow the project's existing conventions** — language, heading style, numbering. If the docs are Korean, write Korean.
 
 ## How this run is structured
@@ -99,10 +99,11 @@ Announce which mode is in effect before continuing.
 
 ### Step 1 — Inventory
 
-Run from the project root:
+Resolve `<skill-dir>` as the directory containing the `SKILL.md` you loaded, then run from the
+project root. Do not assume the skill is project-local; global installation is the default.
 
 ```bash
-python .opencode/skill/context-curation/scripts/docs_inventory.py --root .
+python <skill-dir>/scripts/docs_inventory.py --root .
 ```
 
 Reports per-doc token counts, L0 budget status, orphans, broken pointers, stale docs,
@@ -132,7 +133,7 @@ would have missed it entirely.
 window is consumed:
 
 1. The sessions surrounding each tag hit — enough context to judge the candidate
-2. The unharvested range since `harvested_through_session` in `docs/.curation-state.json`
+2. The unharvested range since `harvested_through_session` in `docs/.curation-state.json`. If no usable checkpoint exists, read the latest five session entries.
 3. Earlier sessions, only if room remains and the tag extraction looked thin
 
 With a single append-only log, seek to a session by heading:
@@ -152,6 +153,12 @@ it for the handoff spec, and fall back to reading the unharvested range.
 Extract candidates: things learned, decided, discovered broken, or repeatedly re-explained.
 Then scan `docs/handoff.md` — items that have survived several handoffs unchanged are usually
 project state wearing a disguise.
+
+Read `rejected_candidates` as prior decisions, not permanent suppression. Reconsider a rejected
+candidate if it appeared again after rejection, its evidence changed, or its recorded
+`reconsider_if` condition is now true. Recurrence is allowed to change the answer over time.
+Treat legacy string entries as labels with unknown evidence; reconsider them on their next
+appearance and migrate them to structured records when writing state.
 
 ### Step 3 — Classify
 
@@ -194,11 +201,12 @@ Combine Step 1's findings with Step 3's additions: L0 over budget → demote con
 a pointer; orphan → add a pointer or archive; duplication → pick the canonical home, replace the
 rest with pointers.
 
-Staleness flags from the script are suspicions based on modification time, not verdicts. Where
-context allows, **open the code or data each flagged doc describes and check whether it still
+Staleness flags from the script are suspicions based on the last commit (or filesystem mtime
+outside Git) and the latest verification marker, not verdicts. Where context allows, **open the
+code or data each flagged doc describes and check whether it still
 holds** rather than asking the user. A doc confirmed accurate gets a `<!-- verified: DATE -->`
-marker and stops being re-flagged; a doc found wrong becomes a rewrite plus, usually, an ADR
-recording what changed.
+marker that resets its staleness clock; it becomes eligible again after the threshold. A doc
+found wrong becomes a rewrite plus, usually, an ADR recording what changed.
 
 Read `references/agents-md-contract.md` before touching AGENTS.md.
 
@@ -221,8 +229,8 @@ State how many items were cut in this pass.
 This is the end of Pass A. Unless the project is small and the window still has clear headroom,
 end the session here — Pass B will reread the proposal and start clean.
 
-**Do not create, edit, move, or archive any file in this step.** The proposal file is the only
-thing written. Present it and wait for explicit approval, item by item. Section G is
+**Do not create, edit, move, or archive any persistent project file in this step.** The temporary
+proposal file is the only thing written. Present it and wait for explicit approval, item by item. Section G is
 informational — there is nothing there to approve, because nothing there gets applied. If the user rejects an
 item, ask whether the underlying rule should change — pushback usually generalizes.
 
@@ -234,8 +242,8 @@ Only after approval, in this order:
 2. Update the AGENTS.md pointer table. Every new L2 doc needs a trigger condition phrased as a situation the agent will recognise itself to be in — "when working on this project" is not one.
 3. **Update the handoff spec** — see the next section. Classify each doc `per-session` / `on-event` / `frozen` and add only `per-session` docs to the checklist. Skipping this is how per-session cost grows silently and never shrinks.
 4. Append an entry to `docs/decisions.md` describing the restructuring itself.
-5. Update `docs/.curation-state.json`: date, session number, `harvested_through_session`, one-line summary, and rejected candidates so they are not re-litigated next run.
-6. Delete `docs/_tuning-proposal.md` — it is now history, and a stale proposal left in `docs/` becomes an orphan at the next audit.
+5. Update `docs/.curation-state.json`: date, session number, `harvested_through_session`, one-line summary, and structured rejected-candidate records. Store each as `{"label": ..., "rejected_at_session": ..., "reason": ..., "reconsider_if": ...}`.
+6. Remove `docs/_tuning-proposal.md` — it is a temporary review artifact, not a persistent document. A stale proposal left in `docs/` becomes an orphan at the next audit.
 
 ### Step 7 — Self-check
 
@@ -244,7 +252,7 @@ Before reporting done, verify and state each:
 - [ ] AGENTS.md token count: before → after, and whether it is under budget
 - [ ] Every new doc has an inbound pointer with a real trigger condition
 - [ ] No content was copied rather than pointed at
-- [ ] Nothing was deleted — only archived
+- [ ] No persistent document was deleted — only archived; the temporary proposal was removed
 - [ ] `docs/.curation-state.json` updated
 - [ ] Net change to per-session work stated explicitly
 

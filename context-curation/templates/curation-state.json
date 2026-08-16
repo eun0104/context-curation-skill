@@ -1,10 +1,9 @@
 {
-  "last_tuned": "YYYY-MM-DD",
-  "last_tuned_session": 0,
+  "schema_version": 1,
+  "last_tuned": null,
+  "last_tuned_session": null,
   "harvested_through_session": 0,
-  "summary": "one line describing what the last tuning run changed",
-  "l0_tokens_after": 0,
-  "rejected_candidates": [
-    "short label of a candidate already considered and rejected"
-  ]
+  "summary": null,
+  "l0_tokens_after": null,
+  "rejected_candidates": []
 }

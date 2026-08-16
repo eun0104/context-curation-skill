@@ -23,7 +23,7 @@ and what does this proposal do about it.>
 ## B. Promotions
 
 ### B1. <the fact, in one sentence>
-- **Source:** `docs/sessions/007-*.md` line 42 <or file path / commit>
+- **Source:** `docs/session-log.md`, Session 007, line 42 <or file path / commit>
 - **Test:** recurrence ✓ · loss ✓ · stability ✓ · non-derivable ✗ → **3/4, promote**
 - **Destination:** `docs/domain/gotchas.md` (new section)
 - **AGENTS.md:** pointer already exists / add row: `| docs/domain/gotchas.md | when a tool fails unexpectedly |`
@@ -53,11 +53,12 @@ and what does this proposal do about it.>
 
 ## E. Considered, not promoted
 
-Recorded so the same candidates are not re-litigated next run.
+Recorded to avoid unchanged re-litigation. Reopen a candidate when its evidence changes or its
+`Reconsider if` condition becomes true.
 
-| Candidate | Score | Why not |
-|---|---|---|
-| <fact> | 1/4 | derivable from `--help`; no recurrence |
+| Candidate | Score | Why not | Reconsider if |
+|---|---|---|---|
+| <fact> | 1/4 | derivable from `--help`; no recurrence | it recurs after session NNN |
 
 ---
 
