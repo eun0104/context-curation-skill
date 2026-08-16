@@ -1,4 +1,4 @@
-# session-handoff — the one edit it needs
+# session-handoff — the required shared-skill hook
 
 `context-curation` tunes handoff's behaviour, but it does that through a project-local spec
 file, not by rewriting the skill. So the skill itself needs exactly one permanent change.
@@ -39,9 +39,15 @@ If `session-handoff` is installed project-locally under `.opencode/skill/`, none
 applies: everything is project-scoped, the spec file is optional, and curation may edit the
 SKILL.md directly after archiving the original.
 
-## Defaults worth changing now
+## Before the first project spec
+
+The hook does not change the base skill when `docs/handoff-spec.md` is absent. The first approved
+curation run creates a project spec only when the evidence supports it. Until then, harvest falls
+back to the recent unharvested session entries even if the base skill does not emit tags.
+
+## Defaults worth evaluating in the first tuning run
 
 Two things in the current setup are worth revisiting at the first tuning run:
 
 - **`decisions.md` is written every session.** A session with no real decision produces a filler entry, and filler entries are what make a decision log stop being worth reading. `on-event` fits it better.
-- **Session-log entries are untagged.** Adding `[candidate]` / `[gotcha]` / `[decision]` markers costs nothing at write time and turns every future harvest from a full re-read into a `grep`. See `templates/handoff-spec.md` for the entry format.
+- **Session-log entries are untagged.** Adding `[candidate]` / `[gotcha]` / `[decision]` markers costs little at write time and turns every future harvest from a full re-read into a `grep`. See `templates/handoff-spec.md` for the project-local entry format.

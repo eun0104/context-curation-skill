@@ -8,7 +8,7 @@ pointer in the always-read layer makes the trigger reliable.
 ## Read on demand
 | Read this | When |
 |---|---|
-| skill `context-curation` | When this file exceeds its budget, when docs contradict each other, when a milestone closes, or when 5+ sessions have passed since `docs/.curation-state.json` last_tuned |
+| skill `context-curation` | When this file exceeds its budget, when docs contradict each other, when a milestone closes, when no curation state exists after several sessions, or when 5+ sessions have passed since `docs/.curation-state.json` last_tuned |
 ```
 
 Optionally add a budget note near the top of AGENTS.md so the constraint is visible at

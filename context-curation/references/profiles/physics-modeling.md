@@ -6,6 +6,14 @@ measured data, and combine mechanisms from different theoretical frameworks.
 A profile is a **prior, not a checklist**. Confirm each item against what the session logs
 actually show before creating anything.
 
+## Contents
+
+1. What makes this project class distinctive
+2. Recommended L2 documents
+3. Recommended invariants
+4. Recommended handoff.md fields
+5. What NOT to promote
+
 ## What makes this project class distinctive
 
 The code is not the model. A line like
